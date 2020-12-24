@@ -2,6 +2,8 @@
 
 Mira is a personal contacts manager written by [Linus](https://github.com/thesephist/mira). It is a place for keeping in touch with people.
 
+[![Install on Deta](install_deta.png)](https://alpha.deta.space/apps/mira)
+
 Mira is designed for quick actions and references to people I've met, and things I want to remember about those people. It looks like this in action:
 
 ![Mira on desktop](screenshot.png)
