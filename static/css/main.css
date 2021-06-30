@@ -92,7 +92,9 @@ input[type="submit"] {
 }
 
 button:hover,
-input[type="submit"].card:hover {
+button:focus,
+input[type="submit"].card:hover,
+input[type="submit"].card:focus {
     cursor: pointer;
     opacity: .75;
 }
@@ -143,6 +145,7 @@ header {
     display: flex;
     flex-direction: column;
     width: 100%;
+    word-break: break-word;
 }
 
 .searchBar {
@@ -151,6 +154,7 @@ header {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
+    position: relative;
 }
 
 .searchInput {
@@ -160,9 +164,17 @@ header {
     flex-grow: 1;
 }
 
-.searchButton,
 .addButton {
     margin: 0;
+}
+
+.matchCount {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    color: var(--light);
+    pointer-events: none;
 }
 
 .split-h {

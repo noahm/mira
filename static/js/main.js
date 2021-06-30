@@ -7,9 +7,34 @@ const {
 
 const DATA_ORIGIN = '/data';
 
-const PAGIATE_BY = 20;
+const PAGIATE_BY = 100;
 
 const TODAY_ISO = (new Date()).toISOString().slice(0, 10);
+
+//> Debounce coalesces multiple calls to the same function in a short
+//  period of time into one call, by cancelling subsequent calls within
+//  a given timeframe.
+const debounce = (fn, delayMillis) => {
+    let lastRun = 0;
+    let to = null;
+    return (...args) => {
+        clearTimeout(to);
+        const now = Date.now();
+        const dfn = () => {
+            lastRun = now;
+            fn(...args);
+        }
+        if (now - lastRun > delayMillis) {
+            dfn()
+        } else {
+            to = setTimeout(dfn, delayMillis);
+        }
+    }
+}
+
+const isInputNode = node => {
+    return ['input', 'textarea'].includes(node.tagName.toLowerCase());
+}
 
 class Contact extends Record {
 
@@ -114,8 +139,7 @@ class ContactItem extends Component {
 
         if (this.isEditing) {
             // remove empty items
-            for (const prop of Object.keys(this.inputs)) {
-                const item = this.inputs[prop];
+            for (const [prop, item] of Object.entries(this.inputs)) {
                 if (item == null) {
                     continue;
                 }
@@ -131,7 +155,15 @@ class ContactItem extends Component {
             this.persister();
             this.sorter();
         } else {
-            this.inputs = this.record.serialize();
+            this.inputs = {};
+
+            for (const [prop, item] of Object.entries(this.record.serialize())) {
+                if (Array.isArray(item)) {
+                    this.inputs[prop] = item.slice();
+                } else {
+                    this.inputs[prop] = item;
+                }
+            }
         }
 
         this.toggleIsEditingSilently();
@@ -232,7 +264,17 @@ class ContactItem extends Component {
         }
 
         return jdom`<li class="contact-item card paper block split-v ${this.isEditing ? 'isEditing' : 'notEditing'}"
-                onclick="${this.isEditing || this.toggleIsEditing}">
+                onclick="${this.isEditing || this.toggleIsEditing}"
+                onkeyup="${evt => {
+                    if (evt.target !== this.node) return;
+
+                    if (evt.key === 'Enter' && !this.isEditing) {
+                        this.toggleIsEditing();
+                    } else if (evt.key === 'Escape' && this.isEditing) {
+                        this.toggleIsEditingSilently();
+                    }
+                }}"
+                tabIndex="0">
             <div class="editArea split-h">
                 <div class="left contact-single-items">
                     ${this.record.singleProperties().map(args => {
@@ -276,7 +318,8 @@ class App extends Component {
         this.searchInput = '';
         this.isFetching = false;
 
-        this.handleSearch = this.handleSearch.bind(this);
+        this.handleInput = this.handleInput.bind(this);
+        this.handleSearch = debounce(this.handleSearch.bind(this), 200);
 
         this.contacts = new ContactStore();
         this.list = new ContactList(
@@ -295,6 +338,20 @@ class App extends Component {
             },
         );
 
+        // Provide the vim-style shortcut of '/' starting a search
+        document.addEventListener('keyup', evt => {
+            if (!isInputNode(evt.target) && evt.key === '/') {
+                evt.preventDefault();
+                this.node.querySelector('.searchInput').focus();
+            }
+        });
+
+        const initialSearchInput = new URLSearchParams(window.location.search).get('q');
+        if (initialSearchInput) {
+            this.searchInput = decodeURIComponent(initialSearchInput);
+            this.handleSearch();
+        }
+
         (async () => {
             this.isFetching = true;
             this.render();
@@ -306,23 +363,45 @@ class App extends Component {
         })();
     }
 
-    handleSearch(evt) {
-        this.searchInput = evt.target.value.trim();
+    handleInput(evt) {
+        this.searchInput = evt.target.value;
+        this.render();
 
-        if (this.searchInput === '') {
+        this.handleSearch();
+    }
+
+    handleSearch() {
+        const url = new URL(window.location.href);
+        if (this.searchInput) {
+            url.searchParams.set('q', encodeURIComponent(this.searchInput));
+        } else {
+            url.searchParams.delete('q');
+        }
+        window.history.replaceState(null, document.title, url.toString());
+
+        const trimmedInput = this.searchInput.trim();
+
+        if (trimmedInput === '') {
             this.list.unfilter();
+            this.render();
             return
         }
 
-        const kw = this.searchInput.toLowerCase();
-        function matches(s) {
-            return s.toString().toLowerCase().includes(kw);
-        }
+        // if search is in the form `[word]: [...words]`
+        // we only search field named [word].
+        const match = trimmedInput.match(/^(\w+):(.*)$/)
+        if (match) {
+            const [_, prop, kw_o] = match;
+            const kw = kw_o.trim().toLowerCase();
+            function matches(s) {
+                return s.toString().toLowerCase().includes(kw);
+            }
 
-        this.list.filter(contact => {
-            for (const v of Object.values(contact.serialize())) {
+            this.list.filter(contact => {
+                const v = contact.serialize()[prop];
+
                 if (v == null) {
-                    continue;
+                    return false;
                 }
 
                 if (Array.isArray(v)) {
@@ -336,10 +415,45 @@ class App extends Component {
                         return true;
                     }
                 }
+
+                return false;
+            });
+        } else {
+            const kw = trimmedInput.toLowerCase();
+            function matches(s) {
+                return s.toString().toLowerCase().includes(kw);
             }
 
-            return false;
-        });
+            this.list.filter(contact => {
+                // Newly added contacts should show up, even in a filtered view
+                if (contact.get('name') === '?') {
+                    return true;
+                }
+
+                for (const v of Object.values(contact.serialize())) {
+                    if (v == null) {
+                        continue;
+                    }
+
+                    if (Array.isArray(v)) {
+                        for (const it of v) {
+                            if (matches(it)) {
+                                return true;
+                            }
+                        }
+                    } else {
+                        if (matches(v)) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+        }
+
+        // Manually render once to update search result count
+        this.render();
     }
 
     compose() {
@@ -351,9 +465,10 @@ class App extends Component {
                 <div class="searchBar card">
                     <input type="text" value="${this.searchInput}"
                         class="searchInput paper block"
-                        oninput="${this.handleSearch}"
-                        placeholder="search ${this.contacts.records.size} contacts ..."
+                        oninput="${this.handleInput}"
+                        placeholder="search people..."
                         autofocus />
+                    <div class="matchCount">${this.list.items.size}</div>
                 </div>
                 <button class="addButton card frost block"
                     onclick="${() => this.contacts.create({
