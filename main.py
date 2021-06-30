@@ -27,8 +27,9 @@ async def post(r: Request):
     for person in items:
         person_by_key[person["key"]] = person
     for old_person in all_items:
-        if not person_by_key[old_person["key"]]:
-            db.delete(person["key"])
+        old_key = old_person["key"]
+        if not person_by_key[old_key]:
+            db.delete(old_key)
     return item
 
 
