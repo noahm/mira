@@ -23,13 +23,12 @@ async def post(r: Request):
         db.put(item)
     # handle deletes
     all_items = db.fetch()
-    if len(all_items) > len(items):
-        person_by_key = {}
-        for person in items:
-            person_by_key[person["key"]] = person
-        for old_person in all_items:
-            if not person_by_key[old_person["key"]]:
-                db.delete(person["key"])
+    person_by_key = {}
+    for person in items:
+        person_by_key[person["key"]] = person
+    for old_person in all_items:
+        if not person_by_key[old_person["key"]]:
+            db.delete(person["key"])
     return item
 
 
